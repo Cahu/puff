@@ -105,6 +105,16 @@ while (defined (my $char = $cmd_win->getch())) {
 		$line_before =~ s/\S+\s*$//;
 	}
 
+	elsif ($char eq "\x01") { # ^A
+		$line_after  = $line_before . $line_after;
+		$line_before = "";
+	}
+
+	elsif ($char eq "\x05") { # ^E
+		$line_before = $line_before . $line_after;
+		$line_after  = "";
+	}
+
 	else {
 		$line_before .= $char;
 	}
