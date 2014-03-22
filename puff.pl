@@ -32,7 +32,8 @@ for (@list) {
 
 $win->addstr(prompt_pos(), $prompt);
 
-my $line = "";
+my $line_before = "";
+my $line_after  = "";
 while (defined (my $char = $win->getch())) {
 
 	# handle resizing
@@ -50,7 +51,8 @@ while (defined (my $char = $win->getch())) {
 	}
 
 	elsif ($char eq "\n") {
-		$line = "";
+		$line_before = "";
+		$line_after  = "";
 	}
 
 	elsif ($char eq "\x04") { # ^D
@@ -58,16 +60,20 @@ while (defined (my $char = $win->getch())) {
 	}
 
 	elsif ($char eq "\x15") { # ^U
-		$line = "";
+		$line_before = "";
+	}
+
+	elsif ($char eq "\x17") { # ^W
+		$line_before =~ s/\S+\s*$//;
 	}
 
 	else {
-		$line .= $char;
+		$line_before .= $char;
 	}
 
 	$win->move(prompt_pos);
 	$win->clrtoeol();
-	$win->addstr(prompt_pos, $prompt . $line);
+	$win->addstr(prompt_pos, $prompt . $line_before . $line_after);
 	$win->refresh;
 }
 
