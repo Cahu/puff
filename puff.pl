@@ -26,8 +26,7 @@ sub make_scr {
 	$cmd_win->keypad(1);     # Allow mapping of keys to constants (such as KEY_DOWN, etc)
 
 	# Populate results window
-	$res_win->addstr(join("\n", @list));
-	$res_win->refresh();
+	&populate_result;
 
 	# prepare prompt
 	$cmd_win->addstr(0, 0, $prompt);
@@ -37,9 +36,18 @@ sub make_scr {
 	noecho;
 }
 
+
+sub populate_result {
+	$res_win->clear();
+	$res_win->move(0, 0);
+	$res_win->addstr(join("\n", @_));
+	$res_win->refresh();
+}
+
+
 initscr;
 
-make_scr;
+make_scr(@list);
 
 my $line_before = "";
 my $line_after  = "";
