@@ -4,7 +4,7 @@ use warnings;
 use Curses;
 
 my $prompt = ">>> ";
-my $cmd = "find . -maxdepth 10";
+my $cmd = "find -L .";
 my $str = `$cmd` or die "'$cmd' returned an error";
 
 my @list = sort grep { $_ !~ m@^(..|.)$@ } split("\n", $str);
@@ -40,29 +40,92 @@ sub make_scr {
 sub populate_result {
 	$res_win->clear();
 	$res_win->move(0, 0);
-	$res_win->addstr(join("\n", @_));
+	$res_win->addstr(join("\n", @{$_[0]}));
 	$res_win->refresh();
 }
 
 
-sub filter {
-	my ($search, @list) = @_;
-
+sub filter_res {
+	my ($search, $list) = @_;
 
 	my $pattern = "";
 	$pattern .= "[^$_]*$_" for (split('', $search));
 
-	return grep { /$pattern/i } @list;
+	my (@in, @out) = (), ();
+	for (@$list) {
+		if (/$pattern/i) {
+			push @in, $_;
+		} else {
+			push @out, $_;
+		}
+	}
+
+	return (\@in, \@out);
 }
+
+
+sub reinsert {
+	my ($search, $reinsert) = @_;
+
+	my %out;
+	my $keep = [ @$reinsert ];
+
+	for my $i (0 .. (length $search) - 1) {
+		my $char = substr($search, $i, 1   );
+		my $filt = substr($search,  0, $i+1);
+
+		($keep, my $out) = filter_res($filt, $keep);
+
+		push @{ $out{$char} }, @$out;
+	}
+
+	return ($keep, \%out);
+}
+
+
+sub merge_sort {
+	my ($l1, $l2) = @_;
+
+	my @res = sort @$l1, @$l2;
+
+	#my ($i, $j, @res) = (0, 0, ());
+	#my ($len1, $len2) = ($#{ $l1 }, $#{ $l2 });
+
+	#while ($i <= $len1 && $j <= $len2) {
+
+	#	next unless (defined $l1->[$i] && defined $l2->[$j]);
+
+	#	if (($l1->[$i] cmp $l2->[$j]) > 0) {
+	#		push @res, $l2->[$j];
+	#		$j++;
+	#	} else {
+	#		push @res, $l1->[$i];
+	#		$i++;
+	#	}
+	#}
+
+	## add remaining elements
+	#push(@res, $l1->[$i .. $len1]) if ($i <= $len1);
+	#push(@res, $l2->[$j .. $len2]) if ($j <= $len2);
+
+	return \@res;
+}
+
+
 
 initscr;
 
-make_scr(@list);
+make_scr(\@list);
 
 my $line_before = "";
 my $line_after  = "";
+my $results = \@list;
+
+my %filtered_out;
 
 while (defined (my $char = $cmd_win->getch())) {
+
+	my $need_repopulate = 0;
 
 	# handle resizing
 	if ($char eq KEY_RESIZE) {
@@ -72,7 +135,7 @@ while (defined (my $char = $cmd_win->getch())) {
 		$cmd_win->delwin();
 		$res_win->delwin();
 
-		make_scr;
+		make_scr($results);
 	}
 
 	elsif ($char eq KEY_UP) {
@@ -97,19 +160,50 @@ while (defined (my $char = $cmd_win->getch())) {
 
 	elsif ($char eq KEY_BACKSPACE || ord($char) == 127) { # backspace hack
 		if (length $line_before) {
+			my $char     = substr($line_before, -1);
 			$line_before = substr($line_before, 0, -1);
+
+			my $reinsert = $filtered_out{$char};
+			$filtered_out{$char} = [];
+
+			if ($reinsert) {
+				my ($keep, $out) = reinsert($line_before . $line_after, $reinsert);
+
+				$results = merge_sort($results, $keep);
+
+				while (my ($c, $l) = each %$out) {
+					push @{ $filtered_out{$c} }, @$l;
+				}
+
+				$need_repopulate = 1;
+			}
 		}
 	}
 
 	elsif ($char eq KEY_DC) {  # del
 		if (length $line_after) {
+			my $char    = substr($line_after, 0, 1);
 			$line_after = substr($line_after, 1);
+
+			my $reinsert = $filtered_out{$char};
+			$filtered_out{$char} = [];
+
+			if ($reinsert) {
+				my ($keep, $out) = reinsert($line_before . $line_after, $reinsert);
+
+				$results = merge_sort($results, $keep);
+
+				while (my ($c, $l) = each %$out) {
+					push @{ $filtered_out{$c} }, @$l;
+				}
+
+				$need_repopulate = 1;
+			}
 		}
 	}
 
 	elsif ($char eq "\n") {
-		$line_before = "";
-		$line_after  = "";
+		last;
 	}
 
 	elsif ($char eq "\x04") { # ^D
@@ -136,15 +230,20 @@ while (defined (my $char = $cmd_win->getch())) {
 
 	else {
 		$line_before .= $char;
+
+		my $fullpattern     = $line_before . $line_after;
+		($results, my $out) = filter_res($fullpattern, $results);
+
+		push @{ $filtered_out{$char} }, @$out;
+
+		$need_repopulate = 1;
 	}
 
-	my $fullpattern = $line_before . $line_after;
-	populate_result(
-		filter($fullpattern, @list)
-	);
+	# refresh results list if necessary
+	populate_result($results) if ($need_repopulate);
 
 	# print the current line
-	$cmd_win->addstr(0, 0, $prompt . $fullpattern);
+	$cmd_win->addstr(0, 0, $prompt . $line_before . $line_after);
 	$cmd_win->clrtoeol();
 
 	# set cursor position
