@@ -9,7 +9,9 @@ my $str = `$cmd` or die "'$cmd' returned an error";
 my @list = sort grep { $_ !~ m@^(..|.)$@ } split("\n", $str);
 
 my $win = Curses->new;
-noecho();
+
+# Don't print typed keys, we will handle it ourself
+noecho;
 
 
 # Screen size
@@ -71,6 +73,7 @@ while (defined (my $char = $win->getch())) {
 		$line_before .= $char;
 	}
 
+	# print the current line
 	$win->move(prompt_pos);
 	$win->clrtoeol();
 	$win->addstr(prompt_pos, $prompt . $line_before . $line_after);
