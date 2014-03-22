@@ -45,7 +45,7 @@ make_scr;
 
 my $line_before = "";
 my $line_after  = "";
-while (defined (my $char = $res_win->getch())) {
+while (defined (my $char = $cmd_win->getch())) {
 
 	# handle resizing
 	if ($char eq KEY_RESIZE) {
