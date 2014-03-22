@@ -9,13 +9,6 @@ my $str = `$cmd` or die "'$cmd' returned an error";
 
 my @list = sort grep { $_ !~ m@^(..|.)$@ } split("\n", $str);
 
-initscr;
-
-# Don't print typed keys, we will handle it ourself
-noecho;
-
-
-
 # Screen size
 my ($row, $col);
 
@@ -39,7 +32,12 @@ sub make_scr {
 	# prepare prompt
 	$cmd_win->addstr(0, 0, $prompt);
 	$cmd_win->refresh();
+
+	# Don't print typed keys, we will handle it ourself
+	noecho;
 }
+
+initscr;
 
 make_scr;
 
@@ -75,6 +73,18 @@ while (defined (my $char = $cmd_win->getch())) {
 		if (length $line_after) {
 			$line_before = $line_before . substr($line_after, 0, 1);
 			$line_after  = substr($line_after, 1);
+		}
+	}
+
+	elsif ($char eq KEY_BACKSPACE) {
+		if (length $line_before) {
+			$line_before = substr($line_before, 0, -1);
+		}
+	}
+
+	elsif ($char eq KEY_DC) {  # del
+		if (length $line_after) {
+			$line_after = substr($line_after, 1);
 		}
 	}
 
