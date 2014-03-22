@@ -6,7 +6,7 @@ use Curses;
 my $cmd = "find . -maxdepth 10";
 my $str = `$cmd` or die "'$cmd' returned an error";
 
-my @list = grep { $_ !~ m@^(..|.)$@ } split("\n", $str);
+my @list = sort grep { $_ !~ m@^(..|.)$@ } split("\n", $str);
 
 my $win = Curses->new;
 noecho();
