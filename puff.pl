@@ -76,7 +76,7 @@ while (defined (my $char = $cmd_win->getch())) {
 		}
 	}
 
-	elsif ($char eq KEY_BACKSPACE) {
+	elsif ($char eq KEY_BACKSPACE || ord($char) == 127) { # backspace hack
 		if (length $line_before) {
 			$line_before = substr($line_before, 0, -1);
 		}
