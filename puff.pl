@@ -52,7 +52,7 @@ sub filter {
 	my $pattern = "";
 	$pattern .= "[^$_]*$_" for (split('', $search));
 
-	return grep { /$pattern/ } @list;
+	return grep { /$pattern/i } @list;
 }
 
 initscr;
