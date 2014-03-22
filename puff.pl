@@ -45,12 +45,23 @@ sub populate_result {
 }
 
 
+sub filter {
+	my ($search, @list) = @_;
+
+
+	my $pattern = "";
+	$pattern .= "[^$_]*$_" for (split('', $search));
+
+	return grep { /$pattern/ } @list;
+}
+
 initscr;
 
 make_scr(@list);
 
 my $line_before = "";
 my $line_after  = "";
+
 while (defined (my $char = $cmd_win->getch())) {
 
 	# handle resizing
@@ -127,8 +138,13 @@ while (defined (my $char = $cmd_win->getch())) {
 		$line_before .= $char;
 	}
 
+	my $fullpattern = $line_before . $line_after;
+	populate_result(
+		filter($fullpattern, @list)
+	);
+
 	# print the current line
-	$cmd_win->addstr(0, 0, $prompt . $line_before . $line_after);
+	$cmd_win->addstr(0, 0, $prompt . $fullpattern);
 	$cmd_win->clrtoeol();
 
 	# set cursor position
