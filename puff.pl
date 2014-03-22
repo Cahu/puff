@@ -49,7 +49,9 @@ sub filter_res {
 	my ($search, $list) = @_;
 
 	my $pattern = "";
-	$pattern .= "[^$_]*$_" for (split('', $search));
+	for (split('', $search)) {
+		$pattern .= "[^\Q$_\E]*\Q$_\E";
+	}
 
 	my (@in, @out) = (), ();
 	for (@$list) {
