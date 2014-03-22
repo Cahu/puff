@@ -3,49 +3,59 @@ use warnings;
 
 use Curses;
 
+my $prompt = ">>> ";
 my $cmd = "find . -maxdepth 10";
 my $str = `$cmd` or die "'$cmd' returned an error";
 
 my @list = sort grep { $_ !~ m@^(..|.)$@ } split("\n", $str);
 
-my $win = Curses->new;
+initscr;
 
 # Don't print typed keys, we will handle it ourself
 noecho;
 
-# Allow mapping of keys to constants (such as KEY_DOWN, etc)
-$win->keypad(1);
+
 
 # Screen size
 my ($row, $col);
-$win->scrollok(1);
-$win->getmaxyx($row, $col);
 
+my $res_win;
+my $cmd_win;
+sub make_scr {
+	getmaxyx($row, $col);
 
-# Prompt
-my $prompt = ">>> ";
+	$res_win = newwin($row-1, $col  , 0     , 0);
+	$cmd_win = newwin(1     , $col  , $row-1, 0);
 
-sub prompt_pos {
-	($row-1, 0);
+	$res_win->scrollok(1);
+
+	$cmd_win->scrollok(1);
+	$cmd_win->keypad(1);     # Allow mapping of keys to constants (such as KEY_DOWN, etc)
+
+	# Populate results window
+	$res_win->addstr(join("\n", @list));
+	$res_win->refresh();
+
+	# prepare prompt
+	$cmd_win->addstr(0, 0, $prompt);
+	$cmd_win->refresh();
 }
 
-
-for (@list) {
-	$win->addstr("$_\n");
-}
-
-$win->addstr(prompt_pos(), $prompt);
+make_scr;
 
 my $line_before = "";
 my $line_after  = "";
-while (defined (my $char = $win->getch())) {
+while (defined (my $char = $res_win->getch())) {
 
 	# handle resizing
 	if ($char eq KEY_RESIZE) {
-		$win->move(prompt_pos());
-		$win->clrtoeol();
+		$cmd_win->move(0, 0);
+		$cmd_win->clrtoeol();
 
-		$win->getmaxyx($row, $col);
+		$cmd_win->delwin();
+		$res_win->delwin();
+
+		make_scr;
 	}
 
 	elsif ($char eq KEY_UP) {
@@ -90,15 +100,13 @@ while (defined (my $char = $win->getch())) {
 	}
 
 	# print the current line
-	$win->move(prompt_pos);
-	$win->clrtoeol();
-	$win->addstr(prompt_pos, $prompt . $line_before . $line_after);
+	$cmd_win->addstr(0, 0, $prompt . $line_before . $line_after);
+	$cmd_win->clrtoeol();
 
 	# set cursor position
-	my ($row, $col) = prompt_pos();
-	$win->move($row, $col + length($prompt) + length($line_before));
+	$cmd_win->move(0, length($prompt) + length($line_before));
 
-	$win->refresh;
+	$cmd_win->refresh;
 }
 
 endwin;
