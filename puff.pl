@@ -155,7 +155,7 @@ sub filter_res {
 sub reinsert {
 	my ($search, $reinsert) = @_;
 
-	my %out;
+	my @out;
 	my $keep = [ @$reinsert ];
 
 	for my $i (0 .. (length $search) - 1) {
@@ -164,10 +164,10 @@ sub reinsert {
 
 		($keep, my $out) = filter_res($filt, $keep);
 
-		push @{ $out{$char} }, @$out;
+		push @out, $out;
 	}
 
-	return ($keep, \%out);
+	return ($keep, \@out);
 }
 
 sub merge_sort {
@@ -179,8 +179,9 @@ sub merge_sort {
 	return \@res;
 }
 
-
-my %filtered_out;  # filtered out paths by eliminating character
+# filtered out paths by eliminating character
+my $filtered_out_before;
+my $filtered_out_after;
 
 my $line_before = "";
 my $line_after  = "";
@@ -216,6 +217,8 @@ while (defined (my $char = $cmd_win->getch())) {
 		if (length $line_before) {
 			$line_after  = substr($line_before, -1) . $line_after;
 			$line_before = substr($line_before, 0, -1);
+
+			push @$filtered_out_after, pop @$filtered_out_before;
 		}
 	}
 
@@ -223,28 +226,20 @@ while (defined (my $char = $cmd_win->getch())) {
 		if (length $line_after) {
 			$line_before = $line_before . substr($line_after, 0, 1);
 			$line_after  = substr($line_after, 1);
+
+			push @$filtered_out_before, pop @$filtered_out_after;
 		}
 	}
 
 	elsif ($char eq KEY_BACKSPACE || ord($char) == 127) { # backspace hack
 		if (length $line_before) {
-			my $char     = substr($line_before, -1);
-			$line_before = substr($line_before, 0, -1);
+			my $char     = substr($line_before, -1);    # identify the removed char
+			$line_before = substr($line_before, 0, -1); # update the line
 
-			my $reinsert = $filtered_out{$char};
-			$filtered_out{$char} = [];
+			push @$filtered_out_before, pop @$filtered_out_after;
 
-			if ($reinsert) {
-				my ($keep, $out) = reinsert($line_before . $line_after, $reinsert);
-
-				$results = merge_sort($results, $keep);
-
-				while (my ($c, $l) = each %$out) {
-					push @{ $filtered_out{$c} }, @$l;
-				}
-
-				$need_repopulate = 1;
-			}
+			my $keep = reinsert($line_before . $line_after, $filtered_out_after);
+			$results = merge_sort($results, $keep);
 		}
 	}
 
@@ -253,20 +248,8 @@ while (defined (my $char = $cmd_win->getch())) {
 			my $char    = substr($line_after, 0, 1);
 			$line_after = substr($line_after, 1);
 
-			my $reinsert = $filtered_out{$char};
-			$filtered_out{$char} = [];
-
-			if ($reinsert) {
-				my ($keep, $out) = reinsert($line_before . $line_after, $reinsert);
-
-				$results = merge_sort($results, $keep);
-
-				while (my ($c, $l) = each %$out) {
-					push @{ $filtered_out{$c} }, @$l;
-				}
-
-				$need_repopulate = 1;
-			}
+			my $keep = reinsert($line_before . $line_after, $filtered_out_after);
+			$results = merge_sort($results, $keep);
 		}
 	}
 
@@ -302,7 +285,7 @@ while (defined (my $char = $cmd_win->getch())) {
 		my $fullpattern     = $line_before . $line_after;
 		($results, my $out) = filter_res($fullpattern, $results);
 
-		push @{ $filtered_out{$char} }, @$out;
+		push @$filtered_out_before, $out;
 
 		$need_repopulate = 1;
 	}
