@@ -4,17 +4,93 @@ use warnings;
 use Curses;
 
 my $prompt = ">>> ";
-my $cmd = "find -L .";
+my $cmd = "find -L . 2> /dev/null";
+
+print "Running: `$cmd`...\n";
 my $str = `$cmd` or die "'$cmd' returned an error";
 
-my @list = sort grep { $_ !~ m@^(..|.)$@ } split("\n", $str);
+my @list =
+	map  { $_ =~ s/^\.\///r  }  # remove leadind './'
+	grep { $_ !~ m@^(..|.)$@ }  # filter out '.' and '..'
+	split("\n", $str);          # separate each file path
 
-# Screen size
-my ($row, $col);
+
+# make a directory tree
+print "Building the directory tree...\n";
+my $TREE = build_tree(\@list);
+
+
+sub build_tree {
+	my ($list) = @_;
+
+	my %tree;
+
+	for my $f (@$list) {
+		my @parts  = split('/', $f);
+
+		my @path   = ();
+		my $folder = \%tree;
+
+		while (defined (my $p = shift @parts)) {
+			push @path, $p;
+			$folder->{$p} //= {
+				match   => 1,                 # include this dir in the results?
+				path    => join("/", @path),  # the full path
+				content => { },               # this dir's contents
+			};
+			$folder = $folder->{$p}{content};
+		}
+	}
+
+	return \%tree;
+}
+
+
+sub flatten_tree {
+	my ($tree) = @_;
+
+	my @trees = ($tree);
+	my @matching = ();
+	my (@in, @out) = (), ();
+
+	while (defined (my $t = shift @trees)) {
+
+		# make sure you sort!
+		for my $dir (sort keys %$t) {
+
+			# filter matching dirs
+			if ($t->{$dir}{match}) {
+				# thanks to sorting, dirs are pushed in alphabetical order
+				push @matching, $t->{$dir};
+			}
+
+			else {
+				push @out, $dir;
+				push @trees, $t->{$dir}{content}; # schedule subdirs for checking
+			}
+		}
+	}
+
+	while (defined (my $match = shift @matching)) {
+
+		# add
+		push @in, $match->{path};
+
+		my $subdirs = $match->{content};
+		# schedule subdirs, still sorted (have to apply reverse order here...)
+		for my $subdir (sort { $b cmp $a } keys %$subdirs) {
+			unshift @matching, $subdirs->{$subdir};
+		}
+	}
+
+	return \@in, \@out;
+}
+
 
 my $res_win;
 my $cmd_win;
 sub make_scr {
+	my ($row, $col);
 	getmaxyx($row, $col);
 
 	$res_win = newwin($row-1, $col  , 0     , 0);
@@ -49,20 +125,30 @@ sub filter_res {
 	my ($search, $list) = @_;
 
 	my $pattern = "";
-	for (split('', $search)) {
-		$pattern .= "[^\Q$_\E]*\Q$_\E";
-	}
+	$pattern   .= "[^\Q$_\E]*\Q$_\E" for (split('', $search));
 
-	my (@in, @out) = (), ();
-	for (@$list) {
-		if (/$pattern/i) {
-			push @in, $_;
-		} else {
-			push @out, $_;
+	my $tree = build_tree($list);
+	my @check = ($tree);
+
+	while (defined (my $t = shift @check)) {
+
+		for my $dir (values %$t) {
+			if ($dir->{path} =~ /$pattern/i) {
+				# this dir match the pattern, then all subdirs match too, no
+				# need to check them
+				$dir->{match} = 1;
+			}
+
+			else {
+				# this dir does not match the pattern, schedule subdirs for
+				# checking
+				$dir->{match} = 0;
+				push @check, $dir->{content};
+			}
 		}
 	}
 
-	return (\@in, \@out);
+	return flatten_tree($tree);
 }
 
 
@@ -84,46 +170,26 @@ sub reinsert {
 	return ($keep, \%out);
 }
 
-
 sub merge_sort {
+	use sort qw(_mergesort);
 	my ($l1, $l2) = @_;
 
 	my @res = sort @$l1, @$l2;
-
-	#my ($i, $j, @res) = (0, 0, ());
-	#my ($len1, $len2) = ($#{ $l1 }, $#{ $l2 });
-
-	#while ($i <= $len1 && $j <= $len2) {
-
-	#	next unless (defined $l1->[$i] && defined $l2->[$j]);
-
-	#	if (($l1->[$i] cmp $l2->[$j]) > 0) {
-	#		push @res, $l2->[$j];
-	#		$j++;
-	#	} else {
-	#		push @res, $l1->[$i];
-	#		$i++;
-	#	}
-	#}
-
-	## add remaining elements
-	#push(@res, $l1->[$i .. $len1]) if ($i <= $len1);
-	#push(@res, $l2->[$j .. $len2]) if ($j <= $len2);
 
 	return \@res;
 }
 
 
-
-initscr;
-
-make_scr(\@list);
+my %filtered_out;  # filtered out paths by eliminating character
 
 my $line_before = "";
 my $line_after  = "";
-my $results = \@list;
+my $results = (flatten_tree($TREE))[0];
 
-my %filtered_out;
+
+initscr;
+
+make_scr($results);
 
 while (defined (my $char = $cmd_win->getch())) {
 
