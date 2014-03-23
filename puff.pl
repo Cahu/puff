@@ -65,7 +65,7 @@ sub flatten_tree {
 			}
 
 			else {
-				push @out, $dir;
+				push @out, $t->{$dir}{path};
 				push @trees, $t->{$dir}{content}; # schedule subdirs for checking
 			}
 		}
