@@ -10,7 +10,7 @@ print "Running: `$cmd`...\n";
 my $str = `$cmd` or die "'$cmd' returned an error";
 
 my @list =
-	map  { $_ =~ s/^\.\///r  }  # remove leadind './'
+	map  { $_ =~ s/\.\///r   }  # remove leading './'
 	grep { $_ !~ m@^(..|.)$@ }  # filter out '.' and '..'
 	split("\n", $str);          # separate each file path
 
@@ -20,16 +20,21 @@ print "Building the directory tree...\n";
 my $TREE = build_tree(\@list);
 
 
+
 sub build_tree {
 	my ($list) = @_;
 
-	my %tree;
+	my %tree = (
+		match => 1,
+		path  => ".",
+		content => {},
+	);
 
 	for my $f (@$list) {
 		my @parts  = split('/', $f);
 
 		my @path   = ();
-		my $folder = \%tree;
+		my $folder = $tree{content};
 
 		while (defined (my $p = shift @parts)) {
 			push @path, $p;
@@ -50,24 +55,21 @@ sub flatten_tree {
 	my ($tree) = @_;
 
 	my @trees = ($tree);
+
+	my @in = ();
 	my @matching = ();
-	my (@in, @out) = (), ();
 
 	while (defined (my $t = shift @trees)) {
 
-		# make sure you sort!
-		for my $dir (sort keys %$t) {
+		# filter matching dirs
+		if ($t->{match}) {
+			# thanks to sorting, dirs are pushed in alphabetical order
+			push @matching, $t;
+		}
 
-			# filter matching dirs
-			if ($t->{$dir}{match}) {
-				# thanks to sorting, dirs are pushed in alphabetical order
-				push @matching, $t->{$dir};
-			}
-
-			else {
-				push @out, $t->{$dir}{path};
-				push @trees, $t->{$dir}{content}; # schedule subdirs for checking
-			}
+		else {
+			my $subdirs = $t->{content};
+			push @trees, $subdirs->{$_} for (sort keys %$subdirs);
 		}
 	}
 
@@ -83,7 +85,7 @@ sub flatten_tree {
 		}
 	}
 
-	return \@in, \@out;
+	return \@in;
 }
 
 
@@ -122,70 +124,31 @@ sub populate_result {
 
 
 sub filter_res {
-	my ($search, $list) = @_;
+	my ($search) = @_;
 
 	my $pattern = "";
 	$pattern   .= "[^\Q$_\E]*\Q$_\E" for (split('', $search));
 
-	my $tree = build_tree($list);
-	my @check = ($tree);
+	my @trees = ($TREE);
 
-	while (defined (my $t = shift @check)) {
+	while (defined (my $t = shift @trees)) {
+		$t->{match} = ($t->{path} =~ /$pattern/i);
 
-		for my $dir (values %$t) {
-			if ($dir->{path} =~ /$pattern/i) {
-				# this dir match the pattern, then all subdirs match too, no
-				# need to check them
-				$dir->{match} = 1;
-			}
-
-			else {
-				# this dir does not match the pattern, schedule subdirs for
-				# checking
-				$dir->{match} = 0;
-				push @check, $dir->{content};
-			}
+		if ($t->{match}) {
+			# this dir matches => all subdirs match
+			next;
+		} else {
+			# add subdirs for checking
+			push @trees, values %{ $t->{content} };
 		}
 	}
-
-	return flatten_tree($tree);
 }
 
 
-sub reinsert {
-	my ($search, $reinsert) = @_;
-
-	my @out;
-	my $keep = [ @$reinsert ];
-
-	for my $i (0 .. (length $search) - 1) {
-		my $char = substr($search, $i, 1   );
-		my $filt = substr($search,  0, $i+1);
-
-		($keep, my $out) = filter_res($filt, $keep);
-
-		push @out, $out;
-	}
-
-	return ($keep, \@out);
-}
-
-sub merge_sort {
-	use sort qw(_mergesort);
-	my ($l1, $l2) = @_;
-
-	my @res = sort @$l1, @$l2;
-
-	return \@res;
-}
-
-# filtered out paths by eliminating character
-my $filtered_out_before;
-my $filtered_out_after;
 
 my $line_before = "";
 my $line_after  = "";
-my $results = (flatten_tree($TREE))[0];
+my $results = flatten_tree($TREE);
 
 
 initscr;
@@ -217,8 +180,6 @@ while (defined (my $char = $cmd_win->getch())) {
 		if (length $line_before) {
 			$line_after  = substr($line_before, -1) . $line_after;
 			$line_before = substr($line_before, 0, -1);
-
-			push @$filtered_out_after, pop @$filtered_out_before;
 		}
 	}
 
@@ -226,8 +187,6 @@ while (defined (my $char = $cmd_win->getch())) {
 		if (length $line_after) {
 			$line_before = $line_before . substr($line_after, 0, 1);
 			$line_after  = substr($line_after, 1);
-
-			push @$filtered_out_before, pop @$filtered_out_after;
 		}
 	}
 
@@ -235,11 +194,7 @@ while (defined (my $char = $cmd_win->getch())) {
 		if (length $line_before) {
 			my $char     = substr($line_before, -1);    # identify the removed char
 			$line_before = substr($line_before, 0, -1); # update the line
-
-			push @$filtered_out_before, pop @$filtered_out_after;
-
-			my $keep = reinsert($line_before . $line_after, $filtered_out_after);
-			$results = merge_sort($results, $keep);
+			$need_repopulate = 1;
 		}
 	}
 
@@ -247,9 +202,7 @@ while (defined (my $char = $cmd_win->getch())) {
 		if (length $line_after) {
 			my $char    = substr($line_after, 0, 1);
 			$line_after = substr($line_after, 1);
-
-			my $keep = reinsert($line_before . $line_after, $filtered_out_after);
-			$results = merge_sort($results, $keep);
+			$need_repopulate = 1;
 		}
 	}
 
@@ -263,10 +216,12 @@ while (defined (my $char = $cmd_win->getch())) {
 
 	elsif ($char eq "\x15") { # ^U
 		$line_before = "";
+		$need_repopulate = 1;
 	}
 
 	elsif ($char eq "\x17") { # ^W
 		$line_before =~ s/\S+\s*$//;
+		$need_repopulate = 1;
 	}
 
 	elsif ($char eq "\x01") { # ^A
@@ -282,16 +237,16 @@ while (defined (my $char = $cmd_win->getch())) {
 	else {
 		$line_before .= $char;
 
-		my $fullpattern     = $line_before . $line_after;
-		($results, my $out) = filter_res($fullpattern, $results);
-
-		push @$filtered_out_before, $out;
-
 		$need_repopulate = 1;
 	}
 
 	# refresh results list if necessary
-	populate_result($results) if ($need_repopulate);
+	if ($need_repopulate) {
+		my $fullpattern = $line_before . $line_after;
+		filter_res($fullpattern);
+		$results = flatten_tree($TREE);
+		populate_result($results);
+	}
 
 	# print the current line
 	$cmd_win->addstr(0, 0, $prompt . $line_before . $line_after);
