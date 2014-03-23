@@ -89,8 +89,8 @@ sub flatten_tree {
 
 my $res_win;
 my $cmd_win;
+my ($row, $col);
 sub make_scr {
-	my ($row, $col);
 	getmaxyx($row, $col);
 
 	$res_win = newwin($row-1, $col  , 0     , 0);
@@ -116,7 +116,7 @@ sub make_scr {
 sub populate_result {
 	$res_win->clear();
 	$res_win->move(0, 0);
-	$res_win->addstr(join("\n", @{$_[0]}));
+	$res_win->addstr(join("\n", @{$_[0]}[-$row..-1]));
 	$res_win->refresh();
 }
 
