@@ -145,8 +145,9 @@ my $prev_pattern = "";
 sub filter_res {
 	my ($search) = @_;
 
+
 	my $pattern = "";
-	$pattern   .= "[^\Q$_\E]*\Q$_\E" for (split('', $search));
+	$pattern   .= "[^\Q$_\E]*?\Q$_\E" for (split('', $search));
 
 	my $more_restrictive = ($search =~ /$prev_pattern/i);
 	my $less_restrictive = ($prev_search =~ /$pattern/i);
