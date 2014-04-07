@@ -148,8 +148,11 @@ sub filter_res {
 	my $pattern = "";
 	$pattern   .= "[^\Q$_\E]*\Q$_\E" for (split('', $search));
 
-	my $more_restrictive = 0; #($search =~ /$prev_pattern/i);
-	my $less_restrictive = 0; #($prev_search =~ /$pattern/i);
+	my $more_restrictive = ($search =~ /$prev_pattern/i);
+	my $less_restrictive = ($prev_search =~ /$pattern/i);
+
+	croak "Restrictiveness inconsistencies" if ($more_restrictive && $less_restrictive);
+
 	$prev_search  = $search;
 	$prev_pattern = $pattern;
 
@@ -171,7 +174,13 @@ sub filter_res {
 					push @in, $t->{path};
 				} else {
 					# didn't match the new search, maybe some hope on children?
-					push @trees, values %{ $t->{content} };
+					for (values %{ $t->{content} }) {
+						# propagate the previous matching status to children. it
+						# is a bug if we don't do this because the re-checking
+						# for children's path won't happen otherwise.
+						$_->{match} = 1;
+						push @trees, $_;
+					}
 				}
 			}
 
@@ -236,7 +245,7 @@ sub filter_res {
 		while (defined (my $p = shift @parts)) {
 			$dir->{cmatch} = 1;
 			$dir = $dir->{content}{$p};
-		}
+		} $dir->{cmatch} = 1;
 	}
 }
 
@@ -347,8 +356,7 @@ while (defined (my $char = $cmd_win->getch())) {
 	#$res_win->clear();
 	#$res_win->move(0, 0);
 	#$res_win->addstr(Dumper($results));
-	#$res_win->addstr(Dumper($filtered_out_before));
-	#$res_win->addstr(Dumper($filtered_out_after));
+	#$res_win->addstr(Dumper($TREE));
 	#$res_win->refresh();
 
 	# print the current line
