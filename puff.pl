@@ -94,7 +94,7 @@ sub flatten_tree {
 
 		my $subdirs = $match->{content};
 		# schedule subdirs, still sorted (have to apply reverse order here...)
-		for my $subdir (sort { $b cmp $a } keys %$subdirs) {
+		for my $subdir (reverse sort keys %$subdirs) {
 			unshift @matching, $subdirs->{$subdir};
 		}
 	}
