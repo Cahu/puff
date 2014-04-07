@@ -2,6 +2,12 @@ use strict;
 use warnings;
 
 use Curses;
+use Carp qw(croak);
+
+$SIG{__DIE__} = sub {
+	endwin;
+	croak;
+};
 
 my $prompt = ">>> ";
 my $cmd = "find -L . 2> /dev/null";
@@ -25,8 +31,9 @@ sub build_tree {
 	my ($list) = @_;
 
 	my %tree = (
-		match => 1,
-		path  => ".",
+		match   => 1,
+		cmatch  => 1,
+		path    => ".",
 		content => {},
 	);
 
@@ -40,6 +47,7 @@ sub build_tree {
 			push @path, $p;
 			$folder->{$p} //= {
 				match   => 1,                 # include this dir in the results?
+				cmatch  => 1,                 # children match?
 				path    => join("/", @path),  # the full path
 				content => { },               # this dir's contents
 			};
@@ -67,7 +75,13 @@ sub flatten_tree {
 			push @matching, $t;
 		}
 
+		elsif (!$t->{cmatch}) {
+			# don't bother going down, no child match
+			next;
+		}
+
 		else {
+			# find subdirs that match
 			my $subdirs = $t->{content};
 			push @trees, $subdirs->{$_} for (sort keys %$subdirs);
 		}
@@ -88,6 +102,8 @@ sub flatten_tree {
 	return \@in;
 }
 
+
+my $M = "M";
 
 my $res_win;
 my $cmd_win;
@@ -123,23 +139,103 @@ sub populate_result {
 }
 
 
+my $prev_search = "";
+my $prev_pattern = "";
+
 sub filter_res {
 	my ($search) = @_;
 
 	my $pattern = "";
 	$pattern   .= "[^\Q$_\E]*\Q$_\E" for (split('', $search));
 
+	my $more_restrictive = 0; #($search =~ /$prev_pattern/i);
+	my $less_restrictive = 0; #($prev_search =~ /$pattern/i);
+	$prev_search  = $search;
+	$prev_pattern = $pattern;
+
+	$M = $more_restrictive ? "M" : "L";
+
+	my @in; # keep track of match
 	my @trees = ($TREE);
 
 	while (defined (my $t = shift @trees)) {
-		$t->{match} = ($t->{path} =~ /$pattern/i);
 
-		if ($t->{match}) {
-			# this dir matches => all subdirs match
-			next;
-		} else {
-			# add subdirs for checking
-			push @trees, values %{ $t->{content} };
+		if ($more_restrictive) {
+			# search more restrictive than before
+
+			if ($t->{match}) {
+				# try the more restrictive match on dirs that matched before
+				$t->{match} = ($t->{path} =~ /$pattern/i);
+
+				if ($t->{match}) {
+					push @in, $t->{path};
+				} else {
+					# didn't match the new search, maybe some hope on children?
+					push @trees, values %{ $t->{content} };
+				}
+			}
+
+			elsif (! $t->{cmatch}) {
+				# more restrictive search and no child matched previously
+				# => don't bother going down
+				;
+			}
+
+			else {
+				# add subdirs for checking since there is hope a child will
+				# match
+				push @trees, values %{ $t->{content} };
+			}
+		}
+
+		elsif ($less_restrictive) {
+			# search less restrictive than before
+
+			if ($t->{match}) {
+				# less restrictive will match for sure on previous matches
+				push @in, $t->{path};
+			}
+
+			else {
+				# re-examine dirs that failed in the previous, more restrictive,
+				# match
+				$t->{match} = ($t->{path} =~ /$pattern/i);
+
+				if ($t->{match}) {
+					# no need to add childs, they will match too
+					push @in, $t->{path};
+				} else {
+					# maybe some hope on childs?
+					push @trees, values %{ $t->{content} };
+				}
+			}
+		}
+
+		else {
+			$M = "N";
+			# whole new search
+
+			$t->{match} = ($t->{path} =~ /$pattern/i);
+
+			if ($t->{match}) {
+				push @in, $t->{path};
+			} else {
+				push @trees, values %{ $t->{content} };
+			}
+		}
+
+		# reset child match flag. will be increased later if childs match
+		$t->{cmatch} = 0;
+	}
+
+	for my $path (@in) {
+
+		my $dir   = $TREE;
+		my @parts = split('/', $path);
+
+		while (defined (my $p = shift @parts)) {
+			$dir->{cmatch} = 1;
+			$dir = $dir->{content}{$p};
 		}
 	}
 }
@@ -236,7 +332,6 @@ while (defined (my $char = $cmd_win->getch())) {
 
 	else {
 		$line_before .= $char;
-
 		$need_repopulate = 1;
 	}
 
@@ -248,12 +343,20 @@ while (defined (my $char = $cmd_win->getch())) {
 		populate_result($results);
 	}
 
+	#use Data::Dumper;
+	#$res_win->clear();
+	#$res_win->move(0, 0);
+	#$res_win->addstr(Dumper($results));
+	#$res_win->addstr(Dumper($filtered_out_before));
+	#$res_win->addstr(Dumper($filtered_out_after));
+	#$res_win->refresh();
+
 	# print the current line
-	$cmd_win->addstr(0, 0, $prompt . $line_before . $line_after);
+	$cmd_win->addstr(0, 0, "$M $prompt" . $line_before . $line_after);
 	$cmd_win->clrtoeol();
 
 	# set cursor position
-	$cmd_win->move(0, length($prompt) + length($line_before));
+	$cmd_win->move(0, 2 + length($prompt) + length($line_before));
 
 	$cmd_win->refresh;
 }
