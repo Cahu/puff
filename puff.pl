@@ -11,7 +11,6 @@ my $str = `$cmd` or die "'$cmd' returned an error";
 
 my @list =
 	map  { $_ =~ s/^\.\///r  }  # remove leadind './'
-	grep { $_ !~ m@^(..|.)$@ }  # filter out '.' and '..'
 	split("\n", $str);          # separate each file path
 
 
